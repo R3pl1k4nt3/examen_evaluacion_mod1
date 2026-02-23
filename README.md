@@ -1,7 +1,5 @@
 # EVALUACIÓN - MÓDULO 1 - PREPROCESADO DE DATOS
 
-**Autores:** Pablo Sánchez y Juanjo García
-
 ## CONSIDERACIONES
 
 * La puntuación máxima que se puede obtener es de **13 puntos** (10 ejercicios obligatorios + 3 puntos con ejercicios opcionales).
