@@ -157,3 +157,116 @@ elementos_unicos <- function(lista_a, lista_b) {
   return(as.list(resultado))
 }
 
+# =============================================================================
+# Cuestión 7
+# Desarrolle una función que procese una lista de palabras y devuelva un
+# diccionario cuya clave sea la palabra y su valor la longitud de la misma.
+#
+# Output: lista nombrada {palabra: longitud}
+# =============================================================================
+
+palabras_y_longitudes <- function(value_list) {
+  
+  #input_check_str(value_list)
+  
+  palabras <- unlist(value_list)
+  
+  longitudes <- nchar(palabras)
+  
+  resultado        <- as.list(longitudes)
+  names(resultado) <- palabras
+  
+  return(resultado)
+}
+
+
+# =============================================================================
+# Cuestión 8
+# Escriba una función que filtre los números impares de una lista y calcule
+# sus cuadrados. El resultado debe ser un diccionario {número_impar: cuadrado}
+#
+# Output: lista nombrada {numero_impar: cuadrado}
+# =============================================================================
+
+impares_y_cuadrados <- function(value_list) {
+  
+  #input_check_num(value_list)
+  
+  vector_numeros <- unlist(value_list)
+  
+  # Filtro los impares (resto de división entre 2 distinto de 0)
+  impares <- vector_numeros[vector_numeros %% 2 != 0]
+  
+  if (length(impares) == 0) {
+    return(list())  # Lista vacía si no hay impares
+  }
+  
+  cuadrados        <- as.list(impares^2)
+  names(cuadrados) <- as.character(impares)
+  
+  return(cuadrados)
+}
+
+
+
+
+# =============================================================================
+# Cuestión 9
+# Implemente una función que reciba una cadena de texto y devuelva el
+# recuento total de consonantes presentes en ella.
+#
+# Output: entero (número de consonantes)
+# =============================================================================
+
+contar_consonantes <- function(cadena) {
+  
+  #input_check_single_str(cadena)
+  
+  # Normalizo: paso a minúsculas y elimino acentos para cubrir más casos
+  cadena_norm <- tolower(cadena)
+  cadena_norm <- chartr("áéíóúàèìòùâêîôû",
+                        "aeiouaeiouaeiou",
+                        cadena_norm)
+  
+  letras <- strsplit(cadena_norm, split = "")[[1]]
+  
+  vocales     <- c("a", "e", "i", "o", "u")
+  es_letra    <- grepl("[a-z]", letras)
+  es_vocal    <- letras %in% vocales
+  es_consonante <- es_letra & !es_vocal
+  
+  return(sum(es_consonante))
+}
+
+# =============================================================================
+# Cuestión 10
+# Desarrolle una función que convierta un número entero en base decimal
+# a su representación en sistema binario.
+#
+# Output: string con la representación binaria
+# =============================================================================
+
+decimal_a_binario <- function(numero) {
+  
+  input_check_single_int(numero)
+  
+  if (numero < 0) {
+    stop("El número debe ser un entero no negativo")
+  }
+  
+  # Caso especial: el binario de 0 es "0"
+  if (numero == 0) {
+    return("0")
+  }
+  
+  # Algoritmo de divisiones sucesivas entre 2
+  bits <- character(0)
+  n    <- numero
+  
+  while (n > 0) {
+    bits <- c(as.character(n %% 2), bits)  # el resto va al frente
+    n    <- n %/% 2
+  }
+  
+  return(paste(bits, collapse = ""))
+}
