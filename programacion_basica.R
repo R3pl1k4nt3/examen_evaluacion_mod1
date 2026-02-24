@@ -3,8 +3,62 @@
 # PROGRAMACIÓN BÁSICA EN R (5 puntos)
 # =============================================================================
 
+# =============================================================================
+# HELPERS DE VALIDACIÓN
+# =============================================================================
 
+input_check_str <- function(value_list) {
+  if (!is.list(value_list)) {
+    stop("La entrada de la función debe ser una lista")
+  }
+  if (length(value_list) == 0) {
+    stop("La lista de entrada no puede estar vacía")
+  }
+  es_texto <- vapply(value_list, is.character, FUN.VALUE = logical(1))
+  if (!all(es_texto)) {
+    indices_malos <- which(!es_texto)
+    valores_malos <- paste(indices_malos, collapse = ", ")
+    stop(paste("Todos los elementos deben ser strings. Fallo en índices:", valores_malos))
+  }
+  # Compruebo que ningún string esté vacío
+  es_vacio <- vapply(value_list, function(x) nchar(x) == 0, FUN.VALUE = logical(1))
+  if (any(es_vacio)) {
+    stop("La lista no puede contener strings vacíos")
+  }
+}
 
+input_check_num <- function(value_list) {
+  if (!is.list(value_list)) {
+    stop("La entrada de la función debe ser una lista")
+  }
+  if (length(value_list) == 0) {
+    stop("La lista de entrada no puede estar vacía")
+  }
+  es_numero <- vapply(value_list, is.numeric, FUN.VALUE = logical(1))
+  if (!all(es_numero)) {
+    indices_malos <- which(!es_numero)
+    valores_malos <- paste(indices_malos, collapse = ", ")
+    stop(paste("Todos los elementos deben ser números. Fallo en índices:", valores_malos))
+  }
+}
+
+input_check_single_str <- function(value) {
+  if (!is.character(value) || length(value) != 1) {
+    stop("La entrada debe ser un único string")
+  }
+  if (nchar(value) == 0) {
+    stop("El string de entrada no puede estar vacío")
+  }
+}
+
+input_check_single_int <- function(value) {
+  if (!is.numeric(value) || length(value) != 1) {
+    stop("La entrada debe ser un único número entero")
+  }
+  if (value != floor(value)) {
+    stop("El número debe ser un entero (sin decimales)")
+  }
+}
 
   # =============================================================================
   # Cuestión 1
@@ -16,7 +70,7 @@
 
 es_vocal <- function(caracter) {
   
-  #input_check_single_str(caracter)
+  input_check_single_str(caracter)
   
   if (nchar(caracter) != 1) {
     stop("La entrada debe ser un único carácter, no una cadena de texto")
@@ -41,7 +95,7 @@ es_vocal <- function(caracter) {
 
 palabra_mas_larga <- function(value_list) {
   
-  #input_check_str(value_list)
+  input_check_str(value_list)
   
   palabras <- unlist(value_list)
   
@@ -67,7 +121,7 @@ palabra_mas_larga <- function(value_list) {
 
 frecuencia_duplicados <- function(value_list) {
   
-  #input_check_num(value_list)
+  input_check_num(value_list)
   
   vector_numeros <- unlist(value_list)
   
@@ -94,7 +148,7 @@ frecuencia_duplicados <- function(value_list) {
 
 convertir_temperatura <- function(value_list) {
   
-  #input_check_num(value_list)
+  input_check_num(value_list)
   
   celsius <- unlist(value_list)
   
@@ -119,7 +173,7 @@ convertir_temperatura <- function(value_list) {
 
 ordenar_por_longitud <- function(value_list) {
   
-  #input_check_str(value_list)
+  input_check_str(value_list)
   
   palabras <- unlist(value_list)
   
@@ -167,7 +221,7 @@ elementos_unicos <- function(lista_a, lista_b) {
 
 palabras_y_longitudes <- function(value_list) {
   
-  #input_check_str(value_list)
+  input_check_str(value_list)
   
   palabras <- unlist(value_list)
   
@@ -190,7 +244,7 @@ palabras_y_longitudes <- function(value_list) {
 
 impares_y_cuadrados <- function(value_list) {
   
-  #input_check_num(value_list)
+  input_check_num(value_list)
   
   vector_numeros <- unlist(value_list)
   
@@ -220,7 +274,7 @@ impares_y_cuadrados <- function(value_list) {
 
 contar_consonantes <- function(cadena) {
   
-  #input_check_single_str(cadena)
+  input_check_single_str(cadena)
   
   # Normalizo: paso a minúsculas y elimino acentos para cubrir más casos
   cadena_norm <- tolower(cadena)
