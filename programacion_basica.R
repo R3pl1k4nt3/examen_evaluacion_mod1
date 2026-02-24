@@ -109,3 +109,51 @@ convertir_temperatura <- function(value_list) {
   return(resultado)
 }
 
+# =============================================================================
+# Cuestión 5
+# Defina una función que reciba una lista de palabras y las devuelva
+# ordenadas de menor a mayor longitud.
+#
+# Output: lista de strings ordenada por longitud ascendente
+# =============================================================================
+
+ordenar_por_longitud <- function(value_list) {
+  
+  #input_check_str(value_list)
+  
+  palabras <- unlist(value_list)
+  
+  indices_ordenados <- order(nchar(palabras))
+  
+  resultado <- palabras[indices_ordenados]
+  
+  return(as.list(resultado))
+}
+
+
+# =============================================================================
+# Cuestión 6
+# Cree una función que reciba dos listas distintas y genere una nueva lista
+# que contenga los elementos únicos (sin duplicados) presentes en ambas.
+#
+# Output: lista con los elementos únicos de la unión de ambas listas
+# =============================================================================
+
+elementos_unicos <- function(lista_a, lista_b) {
+  
+  # Valido ambas listas por separado
+  # Se acepta tanto strings como números, así que valido que sean listas no vacías - NO USO HELPERS DE VALIDACION
+  if (!is.list(lista_a) || !is.list(lista_b)) {
+    stop("Ambas entradas deben ser listas")
+  }
+  if (length(lista_a) == 0 || length(lista_b) == 0) {
+    stop("Las listas de entrada no pueden estar vacías")
+  }
+  
+  # Unimos y eliminamos duplicados
+  union_total  <- c(unlist(lista_a), unlist(lista_b))
+  resultado    <- unique(union_total)
+  
+  return(as.list(resultado))
+}
+
