@@ -1,0 +1,497 @@
+---
+title: "EXAMEN MÓDULO 1 - PREPROCESADO"
+author: "Alejandro J. Gómez Ortiz"
+output: html_document
+date: "`r Sys.Date()`"
+---
+
+# PREPROCESADO DE DATOS
+
+El dataset *parkinsons_disease_data.parquet* contiene información sobre 2,105 pacientes diagnosticados con la enfermedad de Parkinson.
+El objetivo principal es analizar los factores asociados con la enfermedad a partir de información demográfica, antecedentes médicos, mediciones clínicas, evaluaciones cognitivas y funcionales, y síntomas.
+
+La columna `Diagnosis`(binario) indica si el paciente ha sido diagnosticado con Parkinson (1) o no (0).
+
+Se solicita:
+
+1) Análisis descriptivo y gráfico de las variables (univariante y bivariante)
+2) Revisión de posibles valores atípicos siguiendo tanto métodos univariantes como multivariantes
+3) Imputación de datos ausentes en las variables correspondientes
+4) Equilibrado de la muestra sobre la variable `Diagnosis`: reducción de la clase mayoritaria hasta igualar el número de instancias de la clase minoritaria
+
+
+```{r, warning=FALSE, message=FALSE}
+
+library(arrow)
+library(data.table)
+library(tidyverse)
+library(skimr)
+library(formattable)
+library(corrplot)
+library(gridExtra)
+library(solitude)
+
+# reproducibilidad
+set.seed(123)
+
+source("funciones.R")
+
+df <- read_parquet("parkinsons_disease_data.parquet")
+
+```
+
+Se comprueba que los datos se han cargado correctamente:
+
+```{r}
+formattable(head(df))
+```
+
+El dataset contiene variables de diferente naturaleza: variables continuas como `Age`, `BMI`, `SystolicBP` o `MoCA`, y variables binarias codificadas como 0/1 que representan presencia o ausencia de una condición. La variable objetivo `Diagnosis` también es binaria.
+
+Se convierte `Diagnosis` a factor para que sea tratada como variable categórica en los gráficos y agrupaciones:
+
+```{r}
+df$Diagnosis <- as.factor(df$Diagnosis)
+
+sapply(df, class)
+```
+
+De este modo se garantiza que las variables numéricas son numéricas y que la variable objetivo es factor.
+
+# 1. Análisis descriptivo y gráfico de las variables (univariante y bivariante)
+## 1.1 Tipado de variables y valores nulos
+
+Se realiza un primer análisis descriptivo completo del dataset para conocer su estructura, el tipado de las variables y la presencia de valores nulos:
+
+```{r}
+desc_df <- skim(df)
+
+var_type_missing_df <- desc_df %>%
+  mutate(n_missing_perc = 100 * round(1 - complete_rate, 3)) %>%
+  select(skim_type, skim_variable, n_missing, n_missing_perc) %>%
+  arrange(skim_type, n_missing)
+
+formattable(var_type_missing_df)
+```
+
+Se observa que no existen valores nulos en ninguna de las variables del dataset. Lo confirmo calculando el porcentaje total:
+
+```{r}
+# Porcentaje total de valores nulos
+sum(var_type_missing_df$n_missing_perc)
+```
+
+Al ser este valor 0, no será necesario aplicar ninguna técnica de imputación ni excluir variables por superar el umbral del 15% de nulos.
+
+## 1.2 Análisis univariante y bivariante
+### 1.2.1 Variables numéricas continuas
+
+Se separan las variables según su naturaleza antes de analizarlas. Las variables binarias codificadas como 0/1 se tratarán por separado como categóricas, ya que aplicarles histogramas o boxplots no aportaría información relevante:
+
+```{r}
+vars_numericas <- c(
+  "Age", "BMI", "AlcoholConsumption", "PhysicalActivity",
+  "DietQuality", "SleepQuality", "SystolicBP", "DiastolicBP",
+  "CholesterolTotal", "CholesterolLDL", "CholesterolHDL",
+  "CholesterolTriglycerides", "MoCA", "FunctionalAssessment"
+)
+
+vars_categoricas <- c(
+  "Gender", "Ethnicity", "EducationLevel", "Smoking",
+  "FamilyHistoryParkinsons", "TraumaticBrainInjury", "Hypertension",
+  "Diabetes", "Depression", "Stroke", "Tremor", "Rigidity",
+  "Bradykinesia", "PosturalInstability", "SpeechProblems",
+  "SleepDisorders", "Constipation"
+)
+```
+
+Estadísticos descriptivos de las variables numéricas:
+
+```{r}
+desc_numeric_var_df <- desc_df %>%
+  filter(skim_type == "numeric") %>%
+  filter(skim_variable %in% vars_numericas) %>%
+  select(skim_variable,
+         numeric.mean, numeric.sd,
+         numeric.p0, numeric.p25, numeric.p50, numeric.p75, numeric.p100)
+
+formattable(desc_numeric_var_df)
+```
+
+De los estadísticos descriptivos se puede destacar que variables como `CholesterolTriglycerides` y `CholesterolTotal` presentan una desviación estándar elevada en relación a su media, lo que sugiere mayor dispersión y posibles valores atípicos. Variables como `MoCA` y `FunctionalAssessment` muestran rangos amplios que pueden reflejar diferencias relevantes entre pacientes con y sin diagnóstico positivo.
+
+A continuación se representan los histogramas univariantes con curva de normalidad superpuesta para evaluar la distribución de cada variable:
+
+```{r, fig.width=12, fig.height=28}
+plots_hist <- lapply(vars_numericas, function(var) histogram_plot(df, var))
+
+grid.arrange(grobs = plots_hist, ncol = 2)
+```
+
+La mayoría de las variables numéricas presentan distribuciones aproximadamente simétricas o ligeramente sesgadas. `Age` muestra una distribución uniforme entre los 50 y 90 años, lo que indica que la muestra recoge pacientes de un rango de edad amplio. Las variables de colesterol presentan distribuciones más dispersas con colas más pronunciadas.
+
+Se representan los histogramas bivariantes segmentados por `Diagnosis` para detectar diferencias entre grupos:
+
+```{r, fig.width=12, fig.height=28}
+plots_hist_target <- lapply(vars_numericas, function(var) {
+  histogram_var_target_plot(df, var, "Diagnosis")
+})
+
+grid.arrange(grobs = plots_hist_target, ncol = 2)
+```
+
+Se puede observar que variables como `MoCA` y `FunctionalAssessment` presentan distribuciones claramente diferenciadas entre los pacientes con y sin diagnóstico positivo: los pacientes diagnosticados con Parkinson tienden a obtener puntuaciones más bajas en estas evaluaciones. El resto de variables numéricas no muestra diferencias evidentes entre grupos.
+
+Se completa el análisis con los gráficos de cajas y bigotes, que permiten visualizar mejor la distribución y los posibles valores extremos:
+
+```{r, fig.width=12, fig.height=28}
+plots_box <- lapply(vars_numericas, function(var) {
+  boxplot_var_target_plot(df, var, "Diagnosis")
+})
+
+grid.arrange(grobs = plots_box, ncol = 2)
+```
+
+Los boxplots confirman lo observado en los histogramas: `MoCA` y `FunctionalAssessment` son las variables continuas con mayor capacidad discriminante entre grupos. En el resto de variables las medianas son muy similares entre Diagnosis 0 y 1, aunque se aprecian algunos valores extremos en `CholesterolTriglycerides` y `BMI` que se analizarán en detalle en el apartado de outliers.
+
+### 1.2.2 Gráficos de dispersión entre variables numéricas
+
+Se analiza la relación entre pares de variables clínicas relevantes según el diagnóstico para detectar posibles patrones o agrupaciones:
+
+```{r, fig.width=12, fig.height=18}
+pares_scatter <- list(
+  c("BMI", "Age"),
+  c("SystolicBP", "DiastolicBP"),
+  c("CholesterolTotal", "CholesterolLDL"),
+  c("MoCA", "FunctionalAssessment"),
+  c("SleepQuality", "DietQuality"),
+  c("AlcoholConsumption", "PhysicalActivity")
+)
+
+plots_scatter <- lapply(pares_scatter, function(par) {
+  scatter_plot(df, par[1], par[2], "Diagnosis")
+})
+
+grid.arrange(grobs = plots_scatter, ncol = 2)
+```
+
+De los gráficos de dispersión hay que destacar que la relación entre `MoCA` y `FunctionalAssessment` es la que muestra una separación más clara entre pacientes con y sin Parkinson, con los casos positivos concentrándose en valores bajos de ambas variables. El resto de pares no muestra patrones de separación evidentes, lo que es coherente con las bajas correlaciones que se observarán en la matriz de correlaciones.
+
+### 1.2.3 Variables categóricas binarias
+
+Para las variables codificadas como binarias, se analiza su distribución y su relación con `Diagnosis` mediante gráficos de barras apiladas proporcionales, que permiten ver qué proporción de cada categoría corresponde a cada grupo diagnóstico:
+
+```{r, fig.width=12, fig.height=36}
+plots_bar <- lapply(vars_categoricas, function(var) {
+  barplot_categorica_target_plot(df, var, "Diagnosis")
+})
+
+grid.arrange(grobs = plots_bar, ncol = 2)
+```
+
+De los gráficos de barras apiladas se observa que las variables sintomáticas `Tremor`, `Rigidity`, `Bradykinesia` y `PosturalInstability` presentan proporciones claramente distintas entre los grupos: la presencia de estos síntomas está mucho más asociada al diagnóstico positivo que su ausencia. Variables como `Gender`, `Smoking` o `Hypertension` muestran proporciones similares en ambos grupos, lo que sugiere que tienen menor poder discriminante.
+
+### 1.3 Matriz de correlaciones
+
+Se calcula la matriz de correlaciones de Pearson entre las variables numéricas para detectar relaciones lineales y orientar el método de imputación. En primer lugar se representa la matriz incluyendo únicamente las variables continuas originales:
+
+```{r}
+df_num <- select_if(df, is.numeric)
+
+correlacion_pearson_df <- cor(df_num, use = "pairwise.complete.obs")
+
+corrplot(correlacion_pearson_df,
+         tl.cex    = 0.8,
+         tl.offset = 1.2,
+         type      = "upper",
+         method    = "circle",
+         addCoef.col = "grey",
+         order     = "AOE",
+         number.cex = 0.7)
+```
+
+Puede observarse que las correlaciones entre las variables numéricas son en general bajas. Las más destacables se encuentran entre las variables de colesterol (`CholesterolTotal`, `CholesterolLDL`, `CholesterolHDL`) y entre las variables de presión arterial (`SystolicBP`, `DiastolicBP`).
+
+Dado que las correlaciones son en general bajas, en caso de existir valores nulos habría optado por una **imputación estratificada por la mediana** según la variable objetivo `Diagnosis`. Este enfoque es preferible a la media porque la mediana es menos sensible a valores extremos y respeta mejor la distribución de cada grupo diagnóstico.
+
+A continuación se amplía el análisis incluyendo también la variable `Diagnosis` convertida a numérico, filtrando las correlaciones por significatividad estadística para reducir el ruido visual:
+
+```{r, fig.width=10, fig.height=10}
+# Convierto todo a numérico (incluyendo factores binarios)
+df_num <- df %>%
+  mutate(Diagnosis = as.numeric(as.character(Diagnosis))) %>% 
+  select_if(is.numeric)
+
+# Calculo la correlacion de Pearson
+correlacion_pearson_df <- cor(df_num, use = "pairwise.complete.obs")
+
+# Dibujo la matriz COMPLETA
+corrplot(correlacion_pearson_df,
+         tl.cex    = 0.7,
+         tl.offset = 1.2,
+         type      = "upper",
+         method    = "circle",
+         addCoef.col = "grey",
+         order     = "AOE",
+         number.cex = 0.6,
+         title     = "Matriz de Correlación Completa",
+         mar       = c(0,0,1,0))
+
+# Calculo p-valores para filtrar correlaciones no significativas
+p_mat <- cor.mtest(df_num, conf.level = 0.95)
+
+# Represento solo correlaciones significativas respecto a Diagnosis y el resto de variables
+corrplot(correlacion_pearson_df,
+         p.mat       = p_mat$p,
+         sig.level   = 0.05,
+         insig       = "blank",
+         type        = "upper",
+         method      = "circle",
+         tl.cex      = 0.7,
+         tl.col      = "black",
+         addCoef.col = "black",
+         number.cex  = 0.7,
+         title       = "Correlaciones Significativas (p < 0.05)",
+         mar         = c(0,0,1,0))
+```
+
+# ¿Cuáles son los factores más influyentes en el diagnóstico de la enfermedad de Parkinson?
+
+Observando la matriz de correlaciones significativas (p < 0.05) respecto a la variable objetivo `Diagnosis`, se identifican los siguientes factores como los más influyentes:
+
+## Factores con correlación positiva (asociados a la presencia de la enfermedad)
+
+`Tremor` es el factor con la correlación positiva más fuerte (~0.27), seguido de `Rigidity` (~0.19), `Bradykinesia` (~0.18) y `PosturalInstability` (~0.15). Al ser variables binarias, la interpretación es directa: padecer estos síntomas está claramente asociado a un diagnóstico positivo de Parkinson.
+
+Otras variables como `SleepDisorders`, `Constipation`, `Depression` y `Diabetes` también aumentan la probabilidad de un diagnóstico positivo, aunque su influencia es considerablemente más débil (en torno a 0.06). Esto sugiere que actúan más como factores de riesgo secundarios que como indicadores directos de la enfermedad.
+
+## Factores con correlación negativa (el riesgo aumenta cuando su valor disminuye)
+
+`Diagnosis` está negativamente correlacionada de forma destacada con las métricas de evaluación continua: `FunctionalAssessment` (-0.23) y `MoCA` (-0.17). A medida que los pacientes obtienen puntuaciones más bajas en estas pruebas —lo que refleja un mayor deterioro en su capacidad funcional y cognitiva— la probabilidad de obtener un diagnóstico positivo es mayor. Esto tiene una interpretación clínica clara: el deterioro cognitivo y funcional es uno de los indicadores más fiables de la presencia de Parkinson (al menos en este dataset).
+
+# ¿Cómo afecta la calidad del sueño, la dieta y el nivel de actividad física al desarrollo de la enfermedad?
+
+Analizando las correlaciones de `SleepQuality`, `DietQuality` y `PhysicalActivity` con `Diagnosis`, se observa que ninguna de estas tres variables presenta una correlación estadísticamente significativa. Sus coeficientes son cercanos a cero y no superan el umbral p < 0.05, por lo que en este dataset no existe evidencia de que estas variables por sí solas sean predictores relevantes del diagnóstico de Parkinson.
+
+Este resultado no implica necesariamente que no tengan ningún papel en la enfermedad, sino que en la muestra analizada su efecto no es medible mediante una correlación lineal simple. Es posible que su influencia sea indirecta, actuando a través de otras variables como `Depression`, `SleepDisorders` o el estado funcional general del paciente.
+
+
+
+# 2. Revisión de valores atípicos
+
+El análisis de outliers se estructura en dos fases con distinto orden de dependencia respecto a la imputación. En el análisis univariante, los valores nulos no desplazan la caja ni los bigotes si se omiten, por lo que realizarlo antes de imputar garantiza que la distribución no quede artificialmente concentrada en torno a la mediana. En el análisis multivariante, en cambio, la mayoría de algoritmos requieren datos completos para evaluar la anomalía de una observación en función de la combinación de sus variables, por lo que se aplica una imputación provisional previa.
+
+## 2.1 Outliers univariantes (IQR)
+
+Se aplica el criterio del rango intercuartílico (IQR) sobre los datos originales, antes de cualquier imputación. Se ha optado por este orden ya que imputar previamente —incluso con la mediana— podría concentrar registros en un único punto y distorsionar la forma de la distribución. Al no existir valores nulos en el dataset, el resultado es el mismo en ambos casos, por lo que este paso se realiza sobre df sin transformaciones previas.
+
+```{r}
+vars_outlier_univariante <- c("BMI", "CholesterolTriglycerides", "MoCA")
+
+df_outliers <- df
+
+for (var in vars_outlier_univariante) {
+  df_outliers <- outliers_univariantes(df_outliers, var)
+}
+
+# Resumen de outliers por variable
+for (var in vars_outlier_univariante) {
+  col <- paste0("outlier_", var)
+  cat("\n", col, ":\n")
+  print(table(df_outliers[[col]]))
+}
+```
+
+El análisis univariante detecta algunos registros que se sitúan fuera de los límites del IQR en las tres variables analizadas. Sin embargo, dada la naturaleza clínica del dataset, estos valores extremos podrían ser perfectamente válidos (pacientes con perfiles fisiológicos atípicos) y no necesariamente errores de medición. La decisión de eliminarlos o conservarlos se tomará tras el análisis multivariante.
+
+## 2.2 Imputación provisional para el análisis multivariante
+
+El análisis multivariante requiere que no existan valores nulos, ya que los algoritmos de detección de anomalías evalúan la combinación simultánea de todas las variables. Por ello, se realiza en este punto una imputación provisional antes de aplicar el Isolation Forest.
+
+### 2.2.1 Exclusión de variables con más del 15% de nulos
+
+Como se comprobó en el apartado 1.1, el dataset no presenta ningún valor nulo. Por tanto, al ejecutar el filtro por umbral del 15%, ninguna variable resulta excluida:
+
+```{r}
+umbral_nulos <- 15.0
+
+vars_excluir <- var_type_missing_df %>%
+  filter(n_missing_perc > umbral_nulos) %>%
+  pull(skim_variable)
+
+paste("Variables excluidas:", ifelse(length(vars_excluir) == 0, "Ninguna", paste(vars_excluir, collapse = ", ")))
+
+df_imputed <- df_outliers %>% select(-all_of(vars_excluir))
+```
+
+### 2.2.2 Imputación de las variables restantes con nulos
+
+Al no existir valores nulos en el dataset, el bucle de imputación no actúa sobre ninguna variable. El código se ha preparado con imputación estratificada por la mediana según Diagnosis, método preferible a la media por su menor sensibilidad a valores extremos y por respetar mejor la distribución de cada grupo diagnóstico:
+
+```{r}
+# Identificamos las variables con nulos que quedan en el dataset
+vars_con_nulos <- names(df_imputed)[sapply(df_imputed, function(x) any(is.na(x)))]
+# Código defensivo: solo se ejecutaría si hubiera nulos en el futuro
+paste("Variables a imputar:", ifelse(length(vars_con_nulos) == 0, "Ninguna", paste(vars_con_nulos, collapse = ", ")))
+
+# Imputamos cada variable por la mediana estratificada según Diagnosis
+for (var in vars_con_nulos) {
+  df_imputed <- imputar_mediana_estratado(df_imputed, var, "Diagnosis")
+}
+
+paste("Nulos restantes tras imputación:", sum(is.na(df_imputed)))
+```
+
+```{r}
+# Verificación: tabla de nulos tras imputación
+desc_imputed_df <- skim(df_imputed)
+
+var_type_missing_imputed <- desc_imputed_df %>%
+  mutate(n_missing_perc = 100 * round(1 - complete_rate, 3)) %>%
+  select(skim_type, skim_variable, n_missing, n_missing_perc) %>%
+  arrange(skim_type, n_missing)
+
+formattable(var_type_missing_imputed)
+```
+
+Esta imputación tiene carácter provisional: una vez completado el análisis multivariante, la decisión sobre los outliers detectados determinará el dataset definitivo.
+
+## 2.3 Outliers multivariantes (Isolation Forest)
+
+Para detectar outliers multivariantes se utiliza el algoritmo `Isolation Forest`, que identifica observaciones anómalas basándose en qué tan fácil es aislarlas del resto de la muestra. A diferencia del análisis univariante, este enfoque evalúa la combinación simultánea de todas las variables: una observación puede ser anómala no porque ninguna de sus variables sea extrema individualmente, sino porque la combinación de sus valores es inusual en el contexto del resto de la muestra. Se clasifican como anómalas las observaciones que caen por encima del percentil 95 de puntuación de anomalía:
+
+```{r}
+df_anomaly <- df_imputed
+
+n <- 50
+
+iso_forest <- isolationForest$new(
+  sample_size = nrow(df_anomaly),
+  num_trees   = n,
+  seed        = 123
+)
+
+iso_forest$fit(df_anomaly)
+```
+
+```{r}
+anomaly_scores <- iso_forest$predict(df_anomaly)
+
+df_anomaly$anomaly_score <- anomaly_scores$anomaly_score
+
+threshold <- quantile(df_anomaly$anomaly_score, 0.95)
+paste0("Punto de corte para identificar dato anómalo: ", round(threshold, 4))
+
+df_anomaly$is_anomaly <- df_anomaly$anomaly_score > threshold
+```
+
+```{r}
+# Distribución de las puntuaciones de anomalía
+ggplot(df_anomaly, aes(x = anomaly_score)) +
+  geom_histogram(bins = 50, fill = "steelblue", color = "black") +
+  geom_vline(xintercept = threshold, color = "red", linetype = "dashed") +
+  labs(title = "Distribución de las Puntuaciones de Anomalía",
+       x = "Puntuación de Anomalía",
+       y = "Frecuencia") +
+  theme_minimal()
+```
+
+La distribución de las puntuaciones de anomalía muestra una forma aproximadamente normal con una cola derecha. El umbral en el percentil 95 separa de forma natural las observaciones más atípicas del grueso de la muestra.
+
+```{r}
+# Total de anomalías detectadas
+sum(df_anomaly$is_anomaly)
+
+# Distribución de anomalías por Diagnosis
+formattable(
+  df_anomaly %>%
+    group_by(Diagnosis, is_anomaly) %>%
+    count()
+)
+```
+
+```{r}
+# Cruce entre outliers univariantes (BMI) y multivariantes
+formattable(
+  df_anomaly %>%
+    group_by(outlier_BMI, is_anomaly) %>%
+    count()
+)
+```
+
+El cruce entre los outliers univariantes de `BMI` y los multivariantes muestra que no existe una correspondencia perfecta entre ambos métodos: algunos registros marcados como outlier por el IQR no son identificados como anómalos por el Isolation Forest, y viceversa. Este resultado refleja la diferencia conceptual entre ambos enfoques: el criterio IQR evalúa cada variable de forma independiente, mientras que el Isolation Forest detecta combinaciones de valores inusuales que pueden pasar desapercibidas variable a variable.
+
+```{r}
+# Comparación de medianas entre observaciones anómalas y no anómalas
+median_cluster_df <- df_anomaly %>%
+  select(is_anomaly, all_of(vars_numericas)) %>%
+  group_by(is_anomaly) %>%
+  summarize(across(everything(), ~ median(.x, na.rm = TRUE)), .groups = "drop")
+
+formattable(median_cluster_df)
+```
+
+La comparación de medianas entre registros anómalos y no anómalos revela diferencias relevantes en varias variables clínicas. Las observaciones identificadas como anómalas presentan valores notablemente más extremos en `CholesterolTriglycerides` y `BMI`, variables que ya habían mostrado mayor dispersión en el análisis univariante. Antes de proceder a su eliminación, es necesario valorar si estas observaciones responden a errores de registro o si, por el contrario, representan casos clínicamente legítimos: un paciente con un perfil lipídico atípico puede ser un caso real y relevante para el modelo. En este dataset, dado que la magnitud de las diferencias en las medianas es consistente con valores fisiológicamente improbables —especialmente en la combinación de `CholesterolTriglycerides` elevado con `BMI` extremo—, se opta por eliminar estas observaciones, asumiendo que con mayor probabilidad responden a errores de medición o de registro que a perfiles reales de pacientes.
+
+```{r}
+formattable(distinct_function_count(df_anomaly, "is_anomaly"))
+```
+
+```{r}
+# Eliminamos los registros identificados como anómalos y las columnas auxiliares
+cols_auxiliares <- c("anomaly_score", "is_anomaly",
+                     paste0("outlier_", vars_outlier_univariante))
+
+df_wo_anomaly <- df_anomaly %>%
+  filter(is_anomaly == FALSE) %>%
+  select(-all_of(cols_auxiliares))
+
+paste("Registros tras eliminar anomalías:", nrow(df_wo_anomaly))
+```
+
+Tras eliminar las observaciones anómalas, el dataset queda reducido al 95% de los registros originales, manteniendo los datos más representativos de la población objeto de estudio.
+
+
+# 4. Balanceo de la muestra
+
+## 4.1 Distribución inicial de `Diagnosis`
+
+Antes de balancear, reviso el desbalanceo actual de la variable objetivo:
+
+```{r}
+formattable(distinct_function_count(df_wo_anomaly, "Diagnosis"))
+```
+
+Se observa un desbalanceo claro: la clase positiva (Diagnosis = 1) es la mayoritaria, con un número de registros notablemente superior a la clase negativa (Diagnosis = 0). Este desbalanceo puede sesgar los modelos predictivos futuros hacia la clase mayoritaria, por lo que es necesario corregirlo antes de continuar.
+
+## 4.2 Undersampling de la clase mayoritaria
+
+Dado que el enuciado nos solicita reducir la clase mayoritaria hasta igualar el número de instancias de la clase minoritaria, se aplica **undersampling aleatorio**: se seleccionan aleatoriamente tantas observaciones de la clase mayoritaria como tiene la clase minoritaria, manteniendo todas las instancias de esta última:
+
+```{r}
+conteo <- table(df_wo_anomaly$Diagnosis)
+
+clase_minoritaria <- names(conteo)[which.min(conteo)]
+clase_mayoritaria <- names(conteo)[which.max(conteo)]
+n_minoritaria     <- min(conteo)
+
+paste("Clase minoritaria:", clase_minoritaria, "(", n_minoritaria, "registros )")
+paste("Clase mayoritaria:", clase_mayoritaria, "(", max(conteo), "registros )")
+
+df_minoritaria <- df_wo_anomaly %>% filter(Diagnosis == clase_minoritaria)
+df_mayoritaria <- df_wo_anomaly %>% filter(Diagnosis == clase_mayoritaria)
+
+# Muestreo aleatorio de la clase mayoritaria
+df_mayoritaria_sample <- df_mayoritaria %>% slice_sample(n = n_minoritaria)
+
+# Unión de los dos subconjuntos
+df_equilibrio <- bind_rows(df_minoritaria, df_mayoritaria_sample)
+
+paste("Registros tras undersampling:", nrow(df_equilibrio))
+```
+
+```{r}
+formattable(distinct_function_count(df_equilibrio, "Diagnosis"))
+```
+
+La muestra está ahora perfectamente balanceada, con el mismo número de observaciones para cada clase de `Diagnosis`. 
