@@ -1,9 +1,30 @@
 ---
-title: "EXAMEN MÓDULO 1 - PREPROCESADO"
+title: "EXAMEN MÓDULO 1 - DATA SCIENCE Y BIG DATA. LA NUEVA REALIDAD"
 author: "Alejandro J. Gómez Ortiz"
-output: html_document
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    code_folding: hide
+    theme: cosmo
+    highlight: tango
+    self_contained: true
+    mathjax: "https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"
 date: "`r Sys.Date()`"
 ---
+<style>
+  .main-container {
+    max-width: 90% !important; 
+  }
+  table {
+    display: block;
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+</style>
+
+
 
 # PREPROCESADO DE DATOS
 
@@ -21,6 +42,7 @@ Se solicita:
 
 
 ```{r, warning=FALSE, message=FALSE}
+#LIBRERIAS
 
 library(arrow)
 library(data.table)
@@ -43,6 +65,12 @@ df <- read_parquet("parkinsons_disease_data.parquet")
 Se comprueba que los datos se han cargado correctamente:
 
 ```{r}
+formattable(head(df))
+```
+
+Eliminamos la variable DoctorInCharge ya que no forma parte de las variables objeto de estudio (segun el enunciado) y volvemos a comprobar los datos:
+```{r}
+df <- df %>% select(-DoctorInCharge)
 formattable(head(df))
 ```
 
